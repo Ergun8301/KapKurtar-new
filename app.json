@@ -49,21 +49,6 @@
         }
       ]
     },
-    "plugins": [
-      [
-        "expo-location",
-        {
-          "locationAlwaysAndWhenInUsePermission": "KapKurtar needs your location to show nearby offers."
-        }
-      ],
-      [
-        "@rnmapbox/maps",
-        {
-          "RNMapboxMapsImpl": "mapbox"
-        }
-      ],
-      "expo-secure-store"
-    ],
     "extra": {
       "eas": {
         "projectId": "1a1b1ddf-0e2c-42ad-914f-8c816ce2b2ed"
