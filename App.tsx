@@ -1,24 +1,29 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { Map, ShoppingBag, User } from 'lucide-react-native';
 
 // Screens
-import AuthScreen from './src/screens/AuthScreen';
-import HomeScreen from './src/screens/HomeScreen';
-import OffersScreen from './src/screens/OffersScreen';
-import ProfileScreen from './src/screens/ProfileScreen';
+import SplashScreen from './src/screens/SplashScreen';
+import WelcomeScreen from './src/screens/WelcomeScreen';
+import CustomerAuthScreen from './src/screens/CustomerAuthScreen';
+import MerchantAuthScreen from './src/screens/MerchantAuthScreen';
+
+// Navigation
+import ClientTabs from './src/navigation/ClientTabs';
+
+// Merchant Screens
+import MerchantDashboardScreen from './src/screens/merchant/DashboardScreen';
+import CreateOfferScreen from './src/screens/merchant/CreateOfferScreen';
 
 // Store
 import { useAuthStore } from './src/store/authStore';
 
 // Types
-import type { RootStackParamList, MainTabParamList } from './src/types';
+import type { UserRole } from './src/types';
 
 // KapKurtar colors
 const COLORS = {
@@ -30,61 +35,28 @@ const COLORS = {
   textLight: '#666666',
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
-const Tab = createBottomTabNavigator<MainTabParamList>();
+const Stack = createNativeStackNavigator();
 
-// Bottom Tab Navigator
-function MainTabs() {
+type AppScreen = 'splash' | 'welcome' | 'customerAuth' | 'merchantAuth' | 'clientApp' | 'merchantApp';
+type MerchantScreen = 'dashboard' | 'createOffer';
+
+// Merchant App Navigator
+function MerchantApp() {
+  const [currentScreen, setCurrentScreen] = useState<MerchantScreen>('dashboard');
+
+  if (currentScreen === 'createOffer') {
+    return (
+      <CreateOfferScreen
+        onBack={() => setCurrentScreen('dashboard')}
+        onSuccess={() => setCurrentScreen('dashboard')}
+      />
+    );
+  }
+
   return (
-    <Tab.Navigator
-      screenOptions={{
-        headerShown: false,
-        tabBarStyle: {
-          backgroundColor: COLORS.white,
-          borderTopWidth: 0,
-          elevation: 10,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.1,
-          shadowRadius: 12,
-          height: 80,
-          paddingBottom: 20,
-          paddingTop: 10,
-        },
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textLight,
-        tabBarLabelStyle: {
-          fontSize: 12,
-          fontWeight: '600',
-          marginTop: 4,
-        },
-      }}
-    >
-      <Tab.Screen
-        name="Home"
-        component={HomeScreen}
-        options={{
-          tabBarLabel: 'Carte',
-          tabBarIcon: ({ color, size }) => <Map size={size} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Offers"
-        component={OffersScreen}
-        options={{
-          tabBarLabel: 'Offres',
-          tabBarIcon: ({ color, size }) => <ShoppingBag size={size} color={color} />,
-        }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileScreen}
-        options={{
-          tabBarLabel: 'Profil',
-          tabBarIcon: ({ color, size }) => <User size={size} color={color} />,
-        }}
-      />
-    </Tab.Navigator>
+    <MerchantDashboardScreen
+      onCreateOffer={() => setCurrentScreen('createOffer')}
+    />
   );
 }
 
@@ -97,32 +69,99 @@ function LoadingScreen() {
   );
 }
 
-// Main App Component
+// Main App Content
 function AppContent() {
-  const { isAuthenticated, isLoading, checkAuth } = useAuthStore();
+  const { isAuthenticated, isLoading, checkAuth, user } = useAuthStore();
+  const [showSplash, setShowSplash] = useState(true);
+  const [selectedRole, setSelectedRole] = useState<'client' | 'merchant' | null>(null);
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>('splash');
 
   useEffect(() => {
     checkAuth();
   }, []);
 
-  if (isLoading) {
+  // Handle splash finish
+  const handleSplashFinish = () => {
+    setShowSplash(false);
+    if (isAuthenticated && user) {
+      // User is already authenticated, go directly to app
+      if (user.role === 'merchant') {
+        setCurrentScreen('merchantApp');
+      } else {
+        setCurrentScreen('clientApp');
+      }
+    } else {
+      setCurrentScreen('welcome');
+    }
+  };
+
+  // Handle role selection from welcome screen
+  const handleSelectRole = (role: 'client' | 'merchant') => {
+    setSelectedRole(role);
+    if (role === 'client') {
+      setCurrentScreen('customerAuth');
+    } else {
+      setCurrentScreen('merchantAuth');
+    }
+  };
+
+  // Handle successful authentication
+  useEffect(() => {
+    if (isAuthenticated && user && !showSplash) {
+      if (user.role === 'merchant') {
+        setCurrentScreen('merchantApp');
+      } else {
+        setCurrentScreen('clientApp');
+      }
+    }
+  }, [isAuthenticated, user, showSplash]);
+
+  // Handle back from auth screens
+  const handleBackToWelcome = () => {
+    setSelectedRole(null);
+    setCurrentScreen('welcome');
+  };
+
+  if (isLoading && !showSplash) {
     return <LoadingScreen />;
   }
 
+  // Splash Screen
+  if (showSplash || currentScreen === 'splash') {
+    return <SplashScreen onFinish={handleSplashFinish} />;
+  }
+
+  // Welcome Screen
+  if (currentScreen === 'welcome') {
+    return <WelcomeScreen onSelectRole={handleSelectRole} />;
+  }
+
+  // Customer Auth Screen
+  if (currentScreen === 'customerAuth') {
+    return <CustomerAuthScreen onBack={handleBackToWelcome} />;
+  }
+
+  // Merchant Auth Screen
+  if (currentScreen === 'merchantAuth') {
+    return <MerchantAuthScreen onBack={handleBackToWelcome} />;
+  }
+
+  // Merchant App
+  if (currentScreen === 'merchantApp' || user?.role === 'merchant') {
+    return (
+      <NavigationContainer>
+        <Stack.Navigator screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="MerchantApp" component={MerchantApp} />
+        </Stack.Navigator>
+      </NavigationContainer>
+    );
+  }
+
+  // Client App (default)
   return (
     <NavigationContainer>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
-        {!isAuthenticated ? (
-          <Stack.Screen
-            name="Auth"
-            component={AuthScreen}
-            options={{
-              animationTypeForReplace: 'pop',
-            }}
-          />
-        ) : (
-          <Stack.Screen name="Main" component={MainTabs} />
-        )}
+        <Stack.Screen name="ClientTabs" component={ClientTabs} />
       </Stack.Navigator>
     </NavigationContainer>
   );
