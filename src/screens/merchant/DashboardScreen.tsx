@@ -21,6 +21,9 @@ import {
   XCircle,
   Eye,
   EyeOff,
+  ChevronRight,
+  List,
+  Calendar,
 } from 'lucide-react-native';
 import { useAuthStore } from '../../store/authStore';
 import { getMerchantOffers, toggleOfferActive } from '../../api/offers';
@@ -42,9 +45,15 @@ const COLORS = {
 
 interface MerchantDashboardProps {
   onCreateOffer: () => void;
+  onManageOffers: () => void;
+  onViewReservations: () => void;
 }
 
-export default function MerchantDashboardScreen({ onCreateOffer }: MerchantDashboardProps) {
+export default function MerchantDashboardScreen({
+  onCreateOffer,
+  onManageOffers,
+  onViewReservations,
+}: MerchantDashboardProps) {
   const { user, signOut } = useAuthStore();
   const [offers, setOffers] = useState<Offer[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([]);
@@ -163,6 +172,26 @@ export default function MerchantDashboardScreen({ onCreateOffer }: MerchantDashb
           <Plus size={24} color={COLORS.white} />
           <Text style={styles.createButtonText}>Yeni Teklif Oluştur</Text>
         </TouchableOpacity>
+
+        {/* Quick Actions */}
+        <View style={styles.quickActions}>
+          <TouchableOpacity
+            style={styles.quickActionButton}
+            onPress={onManageOffers}
+          >
+            <List size={20} color={COLORS.primary} />
+            <Text style={styles.quickActionText}>Tekliflerimi Yönet</Text>
+            <ChevronRight size={20} color={COLORS.textLight} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.quickActionButton}
+            onPress={onViewReservations}
+          >
+            <Calendar size={20} color={COLORS.secondary} />
+            <Text style={styles.quickActionText}>Tüm Rezervasyonlar</Text>
+            <ChevronRight size={20} color={COLORS.textLight} />
+          </TouchableOpacity>
+        </View>
 
         {/* Pending Reservations */}
         <View style={styles.section}>
@@ -365,6 +394,25 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: COLORS.white,
+  },
+  quickActions: {
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    gap: 8,
+  },
+  quickActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.white,
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+  },
+  quickActionText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+    color: COLORS.text,
   },
   section: {
     paddingHorizontal: 16,

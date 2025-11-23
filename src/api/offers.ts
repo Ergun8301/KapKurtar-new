@@ -254,3 +254,26 @@ export const toggleOfferActive = async (
     return { success: false, error: error.message };
   }
 };
+
+// Delete offer (for merchants)
+export const deleteOffer = async (
+  offerId: string,
+  merchantId: string
+): Promise<{ success: boolean; error?: string }> => {
+  try {
+    const { error } = await supabase
+      .from('offers')
+      .delete()
+      .eq('id', offerId)
+      .eq('merchant_id', merchantId);
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true };
+  } catch (err) {
+    const error = err as Error;
+    return { success: false, error: error.message };
+  }
+};

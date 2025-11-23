@@ -18,12 +18,18 @@ import ClientTabs from './src/navigation/ClientTabs';
 // Merchant Screens
 import MerchantDashboardScreen from './src/screens/merchant/DashboardScreen';
 import CreateOfferScreen from './src/screens/merchant/CreateOfferScreen';
+import ManageOffersScreen from './src/screens/merchant/ManageOffersScreen';
+import EditOfferScreen from './src/screens/merchant/EditOfferScreen';
+import ReservationsScreen from './src/screens/merchant/ReservationsScreen';
+
+// Services
+import { registerForPushNotifications, setupNotificationListeners } from './src/services/notifications';
 
 // Store
 import { useAuthStore } from './src/store/authStore';
 
 // Types
-import type { UserRole } from './src/types';
+import type { Offer } from './src/types';
 
 // KapKurtar colors
 const COLORS = {
@@ -38,17 +44,60 @@ const COLORS = {
 const Stack = createNativeStackNavigator();
 
 type AppScreen = 'splash' | 'welcome' | 'customerAuth' | 'merchantAuth' | 'clientApp' | 'merchantApp';
-type MerchantScreen = 'dashboard' | 'createOffer';
+type MerchantScreen = 'dashboard' | 'createOffer' | 'manageOffers' | 'editOffer' | 'reservations';
 
 // Merchant App Navigator
 function MerchantApp() {
   const [currentScreen, setCurrentScreen] = useState<MerchantScreen>('dashboard');
+  const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+
+  const handleEditOffer = (offer: Offer) => {
+    setSelectedOffer(offer);
+    setCurrentScreen('editOffer');
+  };
+
+  const handleBackToDashboard = () => {
+    setSelectedOffer(null);
+    setCurrentScreen('dashboard');
+  };
+
+  const handleBackToManageOffers = () => {
+    setSelectedOffer(null);
+    setCurrentScreen('manageOffers');
+  };
 
   if (currentScreen === 'createOffer') {
     return (
       <CreateOfferScreen
-        onBack={() => setCurrentScreen('dashboard')}
-        onSuccess={() => setCurrentScreen('dashboard')}
+        onBack={handleBackToDashboard}
+        onSuccess={handleBackToDashboard}
+      />
+    );
+  }
+
+  if (currentScreen === 'manageOffers') {
+    return (
+      <ManageOffersScreen
+        onBack={handleBackToDashboard}
+        onEditOffer={handleEditOffer}
+      />
+    );
+  }
+
+  if (currentScreen === 'editOffer' && selectedOffer) {
+    return (
+      <EditOfferScreen
+        offer={selectedOffer}
+        onBack={handleBackToManageOffers}
+        onSuccess={handleBackToManageOffers}
+      />
+    );
+  }
+
+  if (currentScreen === 'reservations') {
+    return (
+      <ReservationsScreen
+        onBack={handleBackToDashboard}
       />
     );
   }
@@ -56,6 +105,8 @@ function MerchantApp() {
   return (
     <MerchantDashboardScreen
       onCreateOffer={() => setCurrentScreen('createOffer')}
+      onManageOffers={() => setCurrentScreen('manageOffers')}
+      onViewReservations={() => setCurrentScreen('reservations')}
     />
   );
 }
@@ -79,6 +130,26 @@ function AppContent() {
   useEffect(() => {
     checkAuth();
   }, []);
+
+  // Setup push notifications when user is authenticated
+  useEffect(() => {
+    if (user) {
+      registerForPushNotifications();
+
+      // Setup notification listeners
+      const cleanup = setupNotificationListeners(
+        (notification) => {
+          console.log('Notification received:', notification);
+        },
+        (response) => {
+          console.log('Notification response:', response);
+          // Handle navigation based on notification data here
+        }
+      );
+
+      return cleanup;
+    }
+  }, [user]);
 
   // Handle splash finish
   const handleSplashFinish = () => {
