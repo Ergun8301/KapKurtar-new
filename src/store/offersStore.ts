@@ -1,7 +1,8 @@
 import { create } from 'zustand';
+import { getNearbyOffers, getActiveOffers } from '../api/offers';
 import type { Offer, OfferCategory } from '../types';
 
-// Mock data for offers in Istanbul
+// Mock data for fallback when no Supabase connection
 const mockOffers: Offer[] = [
   {
     id: '1',
@@ -131,12 +132,17 @@ interface OffersStore {
   isLoading: boolean;
   error: string | null;
   filterCategory: OfferCategory | null;
+  radiusKm: number;
+  useMockData: boolean;
 
   // Actions
-  fetchOffers: () => Promise<void>;
+  fetchOffers: (clientId?: string) => Promise<void>;
+  fetchNearbyOffers: (clientId: string, radiusKm?: number) => Promise<void>;
   selectOffer: (offer: Offer | null) => void;
   setFilterCategory: (category: OfferCategory | null) => void;
+  setRadiusKm: (radius: number) => void;
   getFilteredOffers: () => Offer[];
+  refreshOffers: () => Promise<void>;
 }
 
 export const useOffersStore = create<OffersStore>((set, get) => ({
@@ -145,20 +151,60 @@ export const useOffersStore = create<OffersStore>((set, get) => ({
   isLoading: false,
   error: null,
   filterCategory: null,
+  radiusKm: 10,
+  useMockData: false,
 
-  fetchOffers: async () => {
+  fetchOffers: async (clientId?: string) => {
     set({ isLoading: true, error: null });
     try {
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      let offers: Offer[] = [];
 
-      // In a real app, this would fetch from Supabase:
-      // const { data, error } = await supabase.from('offers').select('*').eq('is_active', true);
+      if (clientId) {
+        // Try to fetch nearby offers with location
+        offers = await getNearbyOffers(clientId, get().radiusKm);
+      }
 
-      set({ offers: mockOffers, isLoading: false });
+      // If no offers from nearby, try active offers
+      if (offers.length === 0) {
+        offers = await getActiveOffers();
+      }
+
+      // If still no offers, use mock data
+      if (offers.length === 0) {
+        console.log('Utilisation des données de démonstration');
+        offers = mockOffers;
+        set({ offers, isLoading: false, useMockData: true });
+      } else {
+        set({ offers, isLoading: false, useMockData: false });
+      }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Erreur de chargement';
-      set({ error: message, isLoading: false });
+      console.error('Erreur fetchOffers:', error);
+      // Fallback to mock data on error
+      set({ offers: mockOffers, isLoading: false, useMockData: true });
+    }
+  },
+
+  fetchNearbyOffers: async (clientId: string, radiusKm?: number) => {
+    const radius = radiusKm || get().radiusKm;
+    set({ isLoading: true, error: null });
+
+    try {
+      const offers = await getNearbyOffers(clientId, radius);
+
+      if (offers.length === 0) {
+        // Try active offers as fallback
+        const activeOffers = await getActiveOffers();
+        if (activeOffers.length === 0) {
+          set({ offers: mockOffers, isLoading: false, useMockData: true });
+        } else {
+          set({ offers: activeOffers, isLoading: false, useMockData: false });
+        }
+      } else {
+        set({ offers, isLoading: false, useMockData: false });
+      }
+    } catch (error) {
+      console.error('Erreur fetchNearbyOffers:', error);
+      set({ offers: mockOffers, isLoading: false, useMockData: true });
     }
   },
 
@@ -166,9 +212,16 @@ export const useOffersStore = create<OffersStore>((set, get) => ({
 
   setFilterCategory: (category) => set({ filterCategory: category }),
 
+  setRadiusKm: (radius) => set({ radiusKm: radius }),
+
   getFilteredOffers: () => {
     const { offers, filterCategory } = get();
     if (!filterCategory) return offers;
     return offers.filter((offer) => offer.category === filterCategory);
+  },
+
+  refreshOffers: async () => {
+    const { fetchOffers } = get();
+    await fetchOffers();
   },
 }));

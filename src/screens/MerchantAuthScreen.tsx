@@ -13,10 +13,9 @@ import {
   Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { User, Store } from 'lucide-react-native';
+import { ArrowLeft, Store } from 'lucide-react-native';
 import { useAuthStore } from '../store/authStore';
 
-// KapKurtar colors
 const COLORS = {
   primary: '#00A690',
   secondary: '#F75C00',
@@ -26,40 +25,40 @@ const COLORS = {
   textLight: '#666666',
   error: '#E53935',
   border: '#E0E0E0',
-  google: '#4285F4',
 };
 
-type UserType = 'client' | 'merchant';
+interface MerchantAuthScreenProps {
+  onBack: () => void;
+}
 
-export default function AuthScreen() {
+export default function MerchantAuthScreen({ onBack }: MerchantAuthScreenProps) {
   const [isLogin, setIsLogin] = useState(true);
-  const [userType, setUserType] = useState<UserType>('client');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [companyName, setCompanyName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const { signIn, signUp, signInWithGoogle, signInWithGoogleForRole, isLoading, error, clearError } = useAuthStore();
+  const { signIn, signUp, signInWithGoogleForRole, isLoading, error, clearError, setRole } = useAuthStore();
 
   const handleSubmit = async () => {
     clearError();
 
     if (!email || !password) {
-      Alert.alert('Erreur', 'Veuillez remplir tous les champs');
+      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
       return;
     }
 
     if (!isLogin) {
-      if (!fullName) {
-        Alert.alert('Erreur', 'Veuillez entrer votre nom complet');
+      if (!companyName) {
+        Alert.alert('Hata', 'Lütfen işletme adını girin');
         return;
       }
       if (password !== confirmPassword) {
-        Alert.alert('Erreur', 'Les mots de passe ne correspondent pas');
+        Alert.alert('Hata', 'Şifreler eşleşmiyor');
         return;
       }
       if (password.length < 6) {
-        Alert.alert('Erreur', 'Le mot de passe doit contenir au moins 6 caractères');
+        Alert.alert('Hata', 'Şifre en az 6 karakter olmalı');
         return;
       }
     }
@@ -67,20 +66,22 @@ export default function AuthScreen() {
     try {
       if (isLogin) {
         await signIn(email, password);
+        setRole('merchant');
       } else {
-        await signUp(email, password, fullName);
+        await signUp(email, password, companyName);
+        setRole('merchant');
       }
     } catch {
-      // Error is handled by the store
+      // Error handled by store
     }
   };
 
   const handleGoogleSignIn = async () => {
     clearError();
     try {
-      await signInWithGoogleForRole(userType);
+      await signInWithGoogleForRole('merchant');
     } catch (err) {
-      Alert.alert('Erreur', 'Échec de la connexion avec Google');
+      Alert.alert('Hata', 'Google ile giriş başarısız oldu');
     }
   };
 
@@ -101,65 +102,26 @@ export default function AuthScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* Logo Section */}
-          <View style={styles.logoSection}>
-            <View style={styles.logoContainer}>
-              <Text style={styles.logoText}>KapKurtar</Text>
-            </View>
-            <Text style={styles.tagline}>Sauvez des repas, économisez</Text>
+          {/* Header with Back Button */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={onBack} style={styles.backButton}>
+              <ArrowLeft size={24} color={COLORS.text} />
+            </TouchableOpacity>
           </View>
 
-          {/* User Type Toggle */}
-          <View style={styles.userTypeContainer}>
-            <Text style={styles.userTypeLabel}>Je suis</Text>
-            <View style={styles.userTypeToggle}>
-              <TouchableOpacity
-                style={[
-                  styles.userTypeButton,
-                  userType === 'client' && styles.userTypeButtonActive,
-                ]}
-                onPress={() => setUserType('client')}
-              >
-                <User
-                  size={20}
-                  color={userType === 'client' ? COLORS.white : COLORS.text}
-                />
-                <Text
-                  style={[
-                    styles.userTypeText,
-                    userType === 'client' && styles.userTypeTextActive,
-                  ]}
-                >
-                  Client
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.userTypeButton,
-                  userType === 'merchant' && styles.userTypeButtonActive,
-                ]}
-                onPress={() => setUserType('merchant')}
-              >
-                <Store
-                  size={20}
-                  color={userType === 'merchant' ? COLORS.white : COLORS.text}
-                />
-                <Text
-                  style={[
-                    styles.userTypeText,
-                    userType === 'merchant' && styles.userTypeTextActive,
-                  ]}
-                >
-                  Commerçant
-                </Text>
-              </TouchableOpacity>
+          {/* Role Indicator */}
+          <View style={styles.roleSection}>
+            <View style={[styles.roleIcon, { backgroundColor: COLORS.secondary }]}>
+              <Store size={32} color={COLORS.white} />
             </View>
+            <Text style={styles.roleTitle}>🏪 Sat Kurtar</Text>
+            <Text style={styles.roleSubtitle}>İşletme Girişi</Text>
           </View>
 
           {/* Form Section */}
           <View style={styles.formSection}>
             <Text style={styles.title}>
-              {isLogin ? 'Connexion' : 'Créer un compte'}
+              {isLogin ? 'Giriş Yap' : 'İşletme Kaydı'}
             </Text>
 
             {error && (
@@ -179,35 +141,35 @@ export default function AuthScreen() {
                 style={styles.googleIcon}
               />
               <Text style={styles.googleButtonText}>
-                Continuer avec Google
+                Google ile devam et
               </Text>
             </TouchableOpacity>
 
             <View style={styles.divider}>
               <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>ou</Text>
+              <Text style={styles.dividerText}>veya</Text>
               <View style={styles.dividerLine} />
             </View>
 
             {!isLogin && (
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Nom complet</Text>
+                <Text style={styles.label}>İşletme Adı</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="Votre nom"
+                  placeholder="İşletme Adınız"
                   placeholderTextColor={COLORS.textLight}
-                  value={fullName}
-                  onChangeText={setFullName}
+                  value={companyName}
+                  onChangeText={setCompanyName}
                   autoCapitalize="words"
                 />
               </View>
             )}
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Email</Text>
+              <Text style={styles.label}>E-posta</Text>
               <TextInput
                 style={styles.input}
-                placeholder="votre@email.com"
+                placeholder="isletme@email.com"
                 placeholderTextColor={COLORS.textLight}
                 value={email}
                 onChangeText={setEmail}
@@ -218,7 +180,7 @@ export default function AuthScreen() {
             </View>
 
             <View style={styles.inputContainer}>
-              <Text style={styles.label}>Mot de passe</Text>
+              <Text style={styles.label}>Şifre</Text>
               <TextInput
                 style={styles.input}
                 placeholder="••••••••"
@@ -231,7 +193,7 @@ export default function AuthScreen() {
 
             {!isLogin && (
               <View style={styles.inputContainer}>
-                <Text style={styles.label}>Confirmer le mot de passe</Text>
+                <Text style={styles.label}>Şifre Tekrar</Text>
                 <TextInput
                   style={styles.input}
                   placeholder="••••••••"
@@ -252,14 +214,14 @@ export default function AuthScreen() {
                 <ActivityIndicator color={COLORS.white} />
               ) : (
                 <Text style={styles.submitButtonText}>
-                  {isLogin ? 'Se connecter' : "S'inscrire"}
+                  {isLogin ? 'Giriş Yap' : 'Kayıt Ol'}
                 </Text>
               )}
             </TouchableOpacity>
 
             {isLogin && (
               <TouchableOpacity style={styles.forgotPassword}>
-                <Text style={styles.forgotPasswordText}>Mot de passe oublié ?</Text>
+                <Text style={styles.forgotPasswordText}>Şifremi Unuttum</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -267,11 +229,11 @@ export default function AuthScreen() {
           {/* Toggle Section */}
           <View style={styles.toggleSection}>
             <Text style={styles.toggleText}>
-              {isLogin ? "Pas encore de compte ?" : 'Déjà un compte ?'}
+              {isLogin ? 'İşletme hesabınız yok mu?' : 'Zaten hesabınız var mı?'}
             </Text>
             <TouchableOpacity onPress={toggleMode}>
               <Text style={styles.toggleLink}>
-                {isLogin ? "S'inscrire" : 'Se connecter'}
+                {isLogin ? 'Kayıt Ol' : 'Giriş Yap'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -279,9 +241,7 @@ export default function AuthScreen() {
           {/* Info Section */}
           <View style={styles.infoSection}>
             <Text style={styles.infoText}>
-              {userType === 'client'
-                ? '🛒 Trouvez des offres anti-gaspi près de chez vous'
-                : '🏪 Proposez vos invendus et réduisez le gaspillage'}
+              🌱 Gıda israfını azaltın, sürdürülebilir bir gelecek için birlikte çalışalım.
             </Text>
           </View>
         </ScrollView>
@@ -303,67 +263,43 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 24,
   },
-  logoSection: {
-    alignItems: 'center',
-    marginTop: 32,
-    marginBottom: 24,
+  header: {
+    paddingVertical: 12,
   },
-  logoContainer: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderRadius: 16,
-    marginBottom: 12,
-  },
-  logoText: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  tagline: {
-    fontSize: 16,
-    color: COLORS.textLight,
-  },
-  userTypeContainer: {
-    marginBottom: 20,
-  },
-  userTypeLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  userTypeToggle: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.white,
+  backButton: {
+    width: 44,
+    height: 44,
     borderRadius: 12,
-    padding: 4,
+    backgroundColor: COLORS.white,
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
-  userTypeButton: {
-    flex: 1,
-    flexDirection: 'row',
+  roleSection: {
     alignItems: 'center',
+    marginBottom: 24,
+  },
+  roleIcon: {
+    width: 72,
+    height: 72,
+    borderRadius: 18,
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
-    gap: 8,
+    alignItems: 'center',
+    marginBottom: 12,
   },
-  userTypeButtonActive: {
-    backgroundColor: COLORS.primary,
-  },
-  userTypeText: {
-    fontSize: 16,
-    fontWeight: '600',
+  roleTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: COLORS.text,
+    marginBottom: 4,
   },
-  userTypeTextActive: {
-    color: COLORS.white,
+  roleSubtitle: {
+    fontSize: 16,
+    color: COLORS.textLight,
   },
   formSection: {
     backgroundColor: COLORS.white,
@@ -448,7 +384,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
   },
   submitButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.secondary,
     borderRadius: 12,
     paddingVertical: 16,
     alignItems: 'center',
@@ -467,7 +403,7 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   forgotPasswordText: {
-    color: COLORS.primary,
+    color: COLORS.secondary,
     fontSize: 14,
   },
   toggleSection: {
@@ -481,7 +417,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   toggleLink: {
-    color: COLORS.secondary,
+    color: COLORS.primary,
     fontSize: 14,
     fontWeight: 'bold',
   },

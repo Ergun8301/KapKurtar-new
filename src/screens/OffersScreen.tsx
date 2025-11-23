@@ -8,10 +8,13 @@ import {
   Image,
   RefreshControl,
   TextInput,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, MapPin, Clock, Tag } from 'lucide-react-native';
+import { Search, MapPin, Clock, Tag, Package, AlertCircle } from 'lucide-react-native';
 import { useOffersStore } from '../store/offersStore';
+import { useAuthStore } from '../store/authStore';
+import OfferDetailsScreen from './client/OfferDetailsScreen';
 import type { Offer, OfferCategory } from '../types';
 
 // KapKurtar colors
@@ -23,16 +26,17 @@ const COLORS = {
   text: '#1A1A1A',
   textLight: '#666666',
   border: '#E0E0E0',
+  warning: '#FFA000',
 };
 
-// Category config
+// Category config (Turkish)
 const CATEGORY_CONFIG: Record<OfferCategory, { label: string; color: string }> = {
-  bakery: { label: 'Boulangerie', color: '#E8A830' },
-  restaurant: { label: 'Restaurant', color: '#E53935' },
-  grocery: { label: 'Épicerie', color: '#4CAF50' },
-  cafe: { label: 'Café', color: '#795548' },
-  supermarket: { label: 'Supermarché', color: '#2196F3' },
-  other: { label: 'Autre', color: '#9E9E9E' },
+  bakery: { label: 'Fırın', color: '#E8A830' },
+  restaurant: { label: 'Restoran', color: '#E53935' },
+  grocery: { label: 'Market', color: '#4CAF50' },
+  cafe: { label: 'Kafe', color: '#795548' },
+  supermarket: { label: 'Süpermarket', color: '#2196F3' },
+  other: { label: 'Diğer', color: '#9E9E9E' },
 };
 
 interface OfferCardProps {
@@ -57,13 +61,19 @@ function OfferCard({ offer, onPress }: OfferCardProps) {
         <View
           style={[
             styles.categoryBadge,
-            { backgroundColor: CATEGORY_CONFIG[offer.category].color },
+            { backgroundColor: CATEGORY_CONFIG[offer.category]?.color || COLORS.textLight },
           ]}
         >
           <Text style={styles.categoryBadgeText}>
-            {CATEGORY_CONFIG[offer.category].label}
+            {CATEGORY_CONFIG[offer.category]?.label || 'Diğer'}
           </Text>
         </View>
+        {/* Merchant logo overlay */}
+        {offer.store_logo && (
+          <View style={styles.storeLogo}>
+            <Image source={{ uri: offer.store_logo }} style={styles.storeLogoImage} />
+          </View>
+        )}
       </View>
 
       <View style={styles.cardContent}>
@@ -78,7 +88,14 @@ function OfferCard({ offer, onPress }: OfferCardProps) {
           <View style={styles.infoRow}>
             <MapPin size={14} color={COLORS.textLight} />
             <Text style={styles.infoText} numberOfLines={1}>
-              {offer.store_address}
+              {offer.store_address || 'Adres belirtilmemiş'}
+              {offer.distance_m && (
+                <Text style={styles.distanceText}>
+                  {' '}• {offer.distance_m < 1000
+                    ? `${Math.round(offer.distance_m)}m`
+                    : `${(offer.distance_m / 1000).toFixed(1)}km`}
+                </Text>
+              )}
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -96,7 +113,7 @@ function OfferCard({ offer, onPress }: OfferCardProps) {
           </View>
           <View style={styles.quantityBadge}>
             <Text style={styles.quantityText}>
-              {offer.quantity_available} restant{offer.quantity_available > 1 ? 's' : ''}
+              {offer.quantity_available} kaldı
             </Text>
           </View>
         </View>
@@ -106,13 +123,20 @@ function OfferCard({ offer, onPress }: OfferCardProps) {
 }
 
 export default function OffersScreen() {
-  const { offers, fetchOffers, isLoading } = useOffersStore();
+  const { offers, fetchOffers, isLoading, useMockData } = useOffersStore();
+  const { user, profile } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<OfferCategory | null>(null);
+  const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
 
   useEffect(() => {
-    fetchOffers();
-  }, []);
+    // Fetch offers with user ID if available for nearby offers
+    if (user?.id && profile?.has_location) {
+      fetchOffers(user.id);
+    } else {
+      fetchOffers();
+    }
+  }, [user?.id, profile?.has_location]);
 
   const filteredOffers = offers.filter((offer) => {
     const matchesSearch =
@@ -123,8 +147,20 @@ export default function OffersScreen() {
   });
 
   const handleOfferPress = (offer: Offer) => {
-    // Navigate to offer detail or show modal
-    console.log('Selected offer:', offer.id);
+    setSelectedOffer(offer);
+  };
+
+  const handleRefresh = () => {
+    if (user?.id && profile?.has_location) {
+      fetchOffers(user.id);
+    } else {
+      fetchOffers();
+    }
+  };
+
+  const handleBackFromDetails = () => {
+    setSelectedOffer(null);
+    handleRefresh();
   };
 
   const categories: (OfferCategory | 'all')[] = [
@@ -136,23 +172,41 @@ export default function OffersScreen() {
     'supermarket',
   ];
 
+  // Show OfferDetailsScreen if an offer is selected
+  if (selectedOffer) {
+    return (
+      <OfferDetailsScreen
+        offer={selectedOffer}
+        onBack={handleBackFromDetails}
+        onReservationSuccess={handleRefresh}
+      />
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Offres Anti-Gaspi</Text>
+        <Text style={styles.headerTitle}>Teklifler</Text>
         <Text style={styles.headerSubtitle}>
-          {filteredOffers.length} offre{filteredOffers.length > 1 ? 's' : ''} disponible
-          {filteredOffers.length > 1 ? 's' : ''}
+          {filteredOffers.length} teklif mevcut
         </Text>
       </View>
+
+      {/* Demo mode indicator */}
+      {useMockData && (
+        <View style={styles.demoModeContainer}>
+          <AlertCircle size={14} color={COLORS.warning} />
+          <Text style={styles.demoModeText}>Demo modu - Örnek veriler</Text>
+        </View>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
         <Search size={20} color={COLORS.textLight} />
         <TextInput
           style={styles.searchInput}
-          placeholder="Rechercher une offre ou un commerce..."
+          placeholder="Teklif veya mağaza ara..."
           placeholderTextColor={COLORS.textLight}
           value={searchQuery}
           onChangeText={setSearchQuery}
@@ -186,7 +240,7 @@ export default function OffersScreen() {
               <Text
                 style={[styles.categoryText, isSelected && styles.categoryTextSelected]}
               >
-                {isAll ? 'Tous' : config?.label}
+                {isAll ? 'Tümü' : config?.label}
               </Text>
             </TouchableOpacity>
           );
@@ -205,7 +259,7 @@ export default function OffersScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
-            onRefresh={fetchOffers}
+            onRefresh={handleRefresh}
             tintColor={COLORS.primary}
             colors={[COLORS.primary]}
           />
@@ -213,9 +267,9 @@ export default function OffersScreen() {
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Tag size={48} color={COLORS.textLight} />
-            <Text style={styles.emptyText}>Aucune offre trouvée</Text>
+            <Text style={styles.emptyText}>Teklif bulunamadı</Text>
             <Text style={styles.emptySubtext}>
-              Essayez de modifier votre recherche
+              Aramanızı değiştirmeyi deneyin
             </Text>
           </View>
         }
@@ -243,6 +297,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textLight,
     marginTop: 4,
+  },
+  demoModeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF8E1',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  demoModeText: {
+    fontSize: 12,
+    color: COLORS.warning,
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -343,8 +414,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
   },
+  storeLogo: {
+    position: 'absolute',
+    bottom: -20,
+    right: 12,
+    backgroundColor: COLORS.white,
+    borderRadius: 25,
+    padding: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  storeLogoImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
   cardContent: {
     padding: 16,
+    paddingTop: 24,
   },
   cardTitle: {
     fontSize: 18,
@@ -371,6 +461,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textLight,
     flex: 1,
+  },
+  distanceText: {
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   cardFooter: {
     flexDirection: 'row',
