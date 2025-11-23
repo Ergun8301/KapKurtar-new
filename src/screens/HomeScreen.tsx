@@ -11,12 +11,12 @@ import {
   Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import MapboxGL from '@rnmapbox/maps';
 import { MapPin, Clock, Package, X, Navigation, AlertCircle } from 'lucide-react-native';
 import { useOffersStore } from '../store/offersStore';
 import { useLocationStore } from '../store/locationStore';
 import { useAuthStore } from '../store/authStore';
 import { createReservation } from '../api/reservations';
+import { useMapbox, MapboxFallback, MapboxLoading } from '../components/MapboxWrapper';
 import type { Offer, OfferCategory } from '../types';
 
 // KapKurtar colors
@@ -45,12 +45,12 @@ const CATEGORY_CONFIG: Record<OfferCategory, { label: string; color: string }> =
 // Istanbul center coordinates
 const ISTANBUL_CENTER: [number, number] = [28.9784, 41.0082];
 
-// Configure Mapbox - Replace with your access token
-MapboxGL.setAccessToken(process.env.EXPO_PUBLIC_MAPBOX_TOKEN || 'YOUR_MAPBOX_TOKEN');
-
 export default function HomeScreen() {
-  const mapRef = useRef<MapboxGL.MapView>(null);
-  const cameraRef = useRef<MapboxGL.Camera>(null);
+  // Mapbox hook - handles loading and availability
+  const { MapboxGL, isReady: isMapboxReady, isLoading: isMapboxLoading, error: mapboxError } = useMapbox();
+
+  const mapRef = useRef<any>(null);
+  const cameraRef = useRef<any>(null);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<OfferCategory | null>(null);
   const [reserving, setReserving] = useState(false);
@@ -143,6 +143,15 @@ export default function HomeScreen() {
     'cafe',
     'supermarket',
   ];
+
+  // Show loading or fallback if Mapbox is not ready
+  if (isMapboxLoading) {
+    return <MapboxLoading />;
+  }
+
+  if (!isMapboxReady || !MapboxGL) {
+    return <MapboxFallback error={mapboxError} />;
+  }
 
   return (
     <View style={styles.container}>
