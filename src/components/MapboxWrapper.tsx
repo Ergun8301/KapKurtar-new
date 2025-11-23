@@ -1,11 +1,18 @@
 /**
- * MapboxWrapper - Safe wrapper for @rnmapbox/maps
+ * MapboxWrapper - Placeholder component (Mapbox temporarily disabled)
  *
- * This component handles the conditional loading of Mapbox to prevent
- * crashes when the native module is not available (e.g., in Expo Go).
+ * This component previously handled Mapbox map rendering.
+ * Mapbox has been temporarily disabled due to 401 authentication issues.
+ * The map functionality has been replaced with a list view in MapScreen.
+ *
+ * To re-enable Mapbox:
+ * 1. Add @rnmapbox/maps to package.json
+ * 2. Add the plugin to app.config.js
+ * 3. Restore the original MapboxWrapper code
+ * 4. Update HomeScreen.tsx to use the map
  */
-import React, { useEffect, useState, forwardRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 
 // KapKurtar colors
 const COLORS = {
@@ -13,141 +20,54 @@ const COLORS = {
   background: '#F7F2E7',
   text: '#1A1A1A',
   textLight: '#666666',
+  info: '#2196F3',
 };
 
-// Type definitions for Mapbox components
-type MapboxModule = typeof import('@rnmapbox/maps').default;
-
-// Global state for Mapbox availability
-let MapboxGL: MapboxModule | null = null;
-let mapboxError: string | null = null;
-let isMapboxInitialized = false;
-
-// Try to load Mapbox module
-const initializeMapbox = async (): Promise<boolean> => {
-  if (isMapboxInitialized) {
-    return MapboxGL !== null;
-  }
-
-  isMapboxInitialized = true;
-
-  try {
-    // Dynamic import to prevent crash at module load time
-    const mapbox = await import('@rnmapbox/maps');
-    MapboxGL = mapbox.default;
-
-    // Set access token
-    const accessToken = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
-    if (accessToken && MapboxGL) {
-      MapboxGL.setAccessToken(accessToken);
-    }
-
-    return true;
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    mapboxError = errorMessage;
-    console.warn('Mapbox initialization failed:', errorMessage);
-    return false;
-  }
-};
-
-// Hook to check Mapbox availability
+// Placeholder hook - Mapbox is disabled
 export function useMapbox() {
-  const [isReady, setIsReady] = useState(MapboxGL !== null);
-  const [isLoading, setIsLoading] = useState(!isMapboxInitialized);
-  const [error, setError] = useState<string | null>(mapboxError);
-
-  useEffect(() => {
-    if (!isMapboxInitialized) {
-      initializeMapbox().then((success) => {
-        setIsReady(success);
-        setIsLoading(false);
-        if (!success) {
-          setError(mapboxError);
-        }
-      });
-    }
-  }, []);
-
   return {
-    MapboxGL,
-    isReady,
-    isLoading,
-    error
+    MapboxGL: null,
+    isReady: false,
+    isLoading: false,
+    error: 'Mapbox is temporarily disabled'
   };
 }
 
-// Fallback component when Mapbox is not available
+// Fallback component shown instead of the map
 export function MapboxFallback({ error }: { error?: string | null }) {
   return (
     <View style={styles.fallbackContainer}>
       <View style={styles.fallbackContent}>
-        <Text style={styles.fallbackTitle}>Carte non disponible</Text>
+        <Text style={styles.fallbackTitle}>Harita geçici olarak devre dışı</Text>
         <Text style={styles.fallbackText}>
-          La carte nécessite un build EAS pour fonctionner.
+          Harita özelliği şu anda kullanılamıyor.
         </Text>
         <Text style={styles.fallbackHint}>
-          Utilisez `eas build` pour créer un build de développement.
+          Lütfen "Teklifler" sekmesini kullanarak teklifleri görüntüleyin.
         </Text>
-        {error && (
-          <Text style={styles.errorText}>
-            Erreur: {error}
-          </Text>
-        )}
       </View>
     </View>
   );
 }
 
-// Loading component while Mapbox initializes
+// Loading component placeholder
 export function MapboxLoading() {
   return (
     <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
-      <Text style={styles.loadingText}>Chargement de la carte...</Text>
+      <Text style={styles.loadingText}>Yükleniyor...</Text>
     </View>
   );
 }
 
-// Safe MapView wrapper
-interface SafeMapViewProps {
-  style?: any;
-  children?: React.ReactNode;
-  styleURL?: string;
-  logoEnabled?: boolean;
-  attributionEnabled?: boolean;
-  onMapReady?: () => void;
+// Placeholder MapView - not functional
+export const SafeMapView = ({ children, ...props }: any) => {
+  return <MapboxFallback />;
+};
+
+// Placeholder function
+export function getMapboxGL(): null {
+  return null;
 }
-
-export const SafeMapView = forwardRef<any, SafeMapViewProps>(
-  ({ style, children, ...props }, ref) => {
-    const { MapboxGL, isReady, isLoading, error } = useMapbox();
-
-    if (isLoading) {
-      return <MapboxLoading />;
-    }
-
-    if (!isReady || !MapboxGL) {
-      return <MapboxFallback error={error} />;
-    }
-
-    return (
-      <MapboxGL.MapView ref={ref} style={style} {...props}>
-        {children}
-      </MapboxGL.MapView>
-    );
-  }
-);
-
-// Export getMapboxGL for components that need direct access
-export function getMapboxGL(): MapboxModule | null {
-  return MapboxGL;
-}
-
-// Pre-initialize on module load (non-blocking)
-initializeMapbox().catch(() => {
-  // Silently handle initialization errors
-});
 
 const styles = StyleSheet.create({
   fallbackContainer: {
@@ -174,6 +94,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: COLORS.text,
     marginBottom: 8,
+    textAlign: 'center',
   },
   fallbackText: {
     fontSize: 14,
@@ -183,15 +104,9 @@ const styles = StyleSheet.create({
   },
   fallbackHint: {
     fontSize: 12,
-    color: COLORS.primary,
+    color: COLORS.info,
     textAlign: 'center',
     fontStyle: 'italic',
-  },
-  errorText: {
-    fontSize: 10,
-    color: '#E53935',
-    textAlign: 'center',
-    marginTop: 12,
   },
   loadingContainer: {
     flex: 1,
