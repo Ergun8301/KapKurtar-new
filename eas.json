@@ -6,10 +6,16 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "MAPBOX_DOWNLOADS_TOKEN": "@MAPBOX_DOWNLOADS_TOKEN"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "MAPBOX_DOWNLOADS_TOKEN": "@MAPBOX_DOWNLOADS_TOKEN"
+      }
     },
     "production": {
       "autoIncrement": true
