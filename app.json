@@ -33,12 +33,6 @@
         {
           "locationAlwaysAndWhenInUsePermission": "KapKurtar needs your location to show nearby offers."
         }
-      ],
-      [
-        "@rnmapbox/maps",
-        {
-          "RNMapboxMapsImpl": "mapbox"
-        }
       ]
     ],
     "extra": {
