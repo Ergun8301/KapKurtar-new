@@ -10,8 +10,10 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { User, Store } from 'lucide-react-native';
 import { useAuthStore } from '../store/authStore';
 
 // KapKurtar colors
@@ -24,16 +26,20 @@ const COLORS = {
   textLight: '#666666',
   error: '#E53935',
   border: '#E0E0E0',
+  google: '#4285F4',
 };
+
+type UserType = 'client' | 'merchant';
 
 export default function AuthScreen() {
   const [isLogin, setIsLogin] = useState(true);
+  const [userType, setUserType] = useState<UserType>('client');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  const { signIn, signUp, isLoading, error, clearError } = useAuthStore();
+  const { signIn, signUp, signInWithGoogle, signInWithGoogleForRole, isLoading, error, clearError } = useAuthStore();
 
   const handleSubmit = async () => {
     clearError();
@@ -69,6 +75,15 @@ export default function AuthScreen() {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+    clearError();
+    try {
+      await signInWithGoogleForRole(userType);
+    } catch (err) {
+      Alert.alert('Erreur', 'Échec de la connexion avec Google');
+    }
+  };
+
   const toggleMode = () => {
     setIsLogin(!isLogin);
     clearError();
@@ -94,6 +109,53 @@ export default function AuthScreen() {
             <Text style={styles.tagline}>Sauvez des repas, économisez</Text>
           </View>
 
+          {/* User Type Toggle */}
+          <View style={styles.userTypeContainer}>
+            <Text style={styles.userTypeLabel}>Je suis</Text>
+            <View style={styles.userTypeToggle}>
+              <TouchableOpacity
+                style={[
+                  styles.userTypeButton,
+                  userType === 'client' && styles.userTypeButtonActive,
+                ]}
+                onPress={() => setUserType('client')}
+              >
+                <User
+                  size={20}
+                  color={userType === 'client' ? COLORS.white : COLORS.text}
+                />
+                <Text
+                  style={[
+                    styles.userTypeText,
+                    userType === 'client' && styles.userTypeTextActive,
+                  ]}
+                >
+                  Client
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.userTypeButton,
+                  userType === 'merchant' && styles.userTypeButtonActive,
+                ]}
+                onPress={() => setUserType('merchant')}
+              >
+                <Store
+                  size={20}
+                  color={userType === 'merchant' ? COLORS.white : COLORS.text}
+                />
+                <Text
+                  style={[
+                    styles.userTypeText,
+                    userType === 'merchant' && styles.userTypeTextActive,
+                  ]}
+                >
+                  Commerçant
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* Form Section */}
           <View style={styles.formSection}>
             <Text style={styles.title}>
@@ -105,6 +167,27 @@ export default function AuthScreen() {
                 <Text style={styles.errorText}>{error}</Text>
               </View>
             )}
+
+            {/* Google Sign In Button */}
+            <TouchableOpacity
+              style={styles.googleButton}
+              onPress={handleGoogleSignIn}
+              disabled={isLoading}
+            >
+              <Image
+                source={{ uri: 'https://www.google.com/favicon.ico' }}
+                style={styles.googleIcon}
+              />
+              <Text style={styles.googleButtonText}>
+                Continuer avec Google
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>ou</Text>
+              <View style={styles.dividerLine} />
+            </View>
 
             {!isLogin && (
               <View style={styles.inputContainer}>
@@ -192,6 +275,15 @@ export default function AuthScreen() {
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* Info Section */}
+          <View style={styles.infoSection}>
+            <Text style={styles.infoText}>
+              {userType === 'client'
+                ? '🛒 Trouvez des offres anti-gaspi près de chez vous'
+                : '🏪 Proposez vos invendus et réduisez le gaspillage'}
+            </Text>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -213,8 +305,8 @@ const styles = StyleSheet.create({
   },
   logoSection: {
     alignItems: 'center',
-    marginTop: 40,
-    marginBottom: 32,
+    marginTop: 32,
+    marginBottom: 24,
   },
   logoContainer: {
     backgroundColor: COLORS.primary,
@@ -232,6 +324,47 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: COLORS.textLight,
   },
+  userTypeContainer: {
+    marginBottom: 20,
+  },
+  userTypeLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  userTypeToggle: {
+    flexDirection: 'row',
+    backgroundColor: COLORS.white,
+    borderRadius: 12,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  userTypeButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 8,
+  },
+  userTypeButtonActive: {
+    backgroundColor: COLORS.primary,
+  },
+  userTypeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  userTypeTextActive: {
+    color: COLORS.white,
+  },
   formSection: {
     backgroundColor: COLORS.white,
     borderRadius: 20,
@@ -246,7 +379,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     color: COLORS.text,
-    marginBottom: 24,
+    marginBottom: 20,
     textAlign: 'center',
   },
   errorContainer: {
@@ -259,6 +392,41 @@ const styles = StyleSheet.create({
     color: COLORS.error,
     fontSize: 14,
     textAlign: 'center',
+  },
+  googleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.white,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    paddingVertical: 14,
+    gap: 12,
+  },
+  googleIcon: {
+    width: 20,
+    height: 20,
+  },
+  googleButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: COLORS.border,
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    color: COLORS.textLight,
   },
   inputContainer: {
     marginBottom: 16,
@@ -316,5 +484,15 @@ const styles = StyleSheet.create({
     color: COLORS.secondary,
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  infoSection: {
+    marginTop: 24,
+    paddingHorizontal: 16,
+  },
+  infoText: {
+    fontSize: 14,
+    color: COLORS.textLight,
+    textAlign: 'center',
+    lineHeight: 20,
   },
 });

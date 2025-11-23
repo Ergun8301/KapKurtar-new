@@ -8,12 +8,15 @@ import {
   Image,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import MapboxGL from '@rnmapbox/maps';
-import { MapPin, Clock, Package, X, Navigation } from 'lucide-react-native';
+import { MapPin, Clock, Package, X, Navigation, AlertCircle } from 'lucide-react-native';
 import { useOffersStore } from '../store/offersStore';
 import { useLocationStore } from '../store/locationStore';
+import { useAuthStore } from '../store/authStore';
+import { createReservation } from '../api/reservations';
 import type { Offer, OfferCategory } from '../types';
 
 // KapKurtar colors
@@ -26,6 +29,7 @@ const COLORS = {
   textLight: '#666666',
   error: '#E53935',
   border: '#E0E0E0',
+  warning: '#FFA000',
 };
 
 // Category config
@@ -49,15 +53,34 @@ export default function HomeScreen() {
   const cameraRef = useRef<MapboxGL.Camera>(null);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<OfferCategory | null>(null);
+  const [reserving, setReserving] = useState(false);
 
-  const { offers, fetchOffers, isLoading } = useOffersStore();
+  const { offers, fetchOffers, isLoading, useMockData } = useOffersStore();
   const { latitude, longitude, getCurrentLocation, hasPermission, requestPermission } =
     useLocationStore();
+  const { user, profile, updateLocation } = useAuthStore();
 
   useEffect(() => {
-    fetchOffers();
-    requestPermission();
+    initializeScreen();
   }, []);
+
+  const initializeScreen = async () => {
+    await requestPermission();
+
+    // Fetch offers with user ID if available for nearby offers
+    if (user?.id && profile?.has_location) {
+      fetchOffers(user.id);
+    } else {
+      fetchOffers();
+    }
+  };
+
+  // Update location in Supabase when we get GPS coordinates
+  useEffect(() => {
+    if (hasPermission && latitude && longitude && user?.id) {
+      updateLocation(longitude, latitude);
+    }
+  }, [latitude, longitude, hasPermission, user?.id]);
 
   const filteredOffers = selectedCategory
     ? offers.filter((o) => o.category === selectedCategory)
@@ -69,7 +92,7 @@ export default function HomeScreen() {
 
   const handleLocateMe = async () => {
     await getCurrentLocation();
-    if (cameraRef.current) {
+    if (cameraRef.current && latitude && longitude) {
       cameraRef.current.setCamera({
         centerCoordinate: [longitude, latitude],
         zoomLevel: 14,
@@ -80,6 +103,36 @@ export default function HomeScreen() {
 
   const handleCategoryPress = (category: OfferCategory | null) => {
     setSelectedCategory(category === selectedCategory ? null : category);
+  };
+
+  const handleReserve = async () => {
+    if (!selectedOffer) return;
+
+    if (!user) {
+      Alert.alert('Connexion requise', 'Veuillez vous connecter pour réserver une offre.');
+      return;
+    }
+
+    setReserving(true);
+    try {
+      const result = await createReservation(selectedOffer.id, selectedOffer.store_id, 1);
+
+      if (result.success) {
+        Alert.alert(
+          'Réservation confirmée !',
+          `Vous avez réservé "${selectedOffer.title}" chez ${selectedOffer.store_name}.\n\nRetrait: ${selectedOffer.pickup_start} - ${selectedOffer.pickup_end}`,
+          [{ text: 'OK', onPress: () => setSelectedOffer(null) }]
+        );
+        // Refresh offers to update quantities
+        fetchOffers(user.id);
+      } else {
+        Alert.alert('Erreur', result.error || 'Impossible de créer la réservation');
+      }
+    } catch (error) {
+      Alert.alert('Erreur', 'Une erreur est survenue lors de la réservation');
+    } finally {
+      setReserving(false);
+    }
   };
 
   const categories: (OfferCategory | 'all')[] = [
@@ -113,7 +166,7 @@ export default function HomeScreen() {
           <MapboxGL.UserLocation visible={true} showsUserHeadingIndicator={true} />
         )}
 
-        {/* Offer markers */}
+        {/* Offer markers with logos */}
         {filteredOffers.map((offer) => (
           <MapboxGL.MarkerView
             key={offer.id}
@@ -121,13 +174,30 @@ export default function HomeScreen() {
             anchor={{ x: 0.5, y: 1 }}
           >
             <TouchableOpacity
-              style={[
-                styles.marker,
-                { backgroundColor: CATEGORY_CONFIG[offer.category].color },
-              ]}
+              style={styles.markerContainer}
               onPress={() => handleMarkerPress(offer)}
             >
-              <Text style={styles.markerText}>{offer.discounted_price}₺</Text>
+              {/* Merchant logo or colored marker */}
+              {offer.store_logo ? (
+                <View style={styles.logoMarker}>
+                  <Image
+                    source={{ uri: offer.store_logo }}
+                    style={styles.logoImage}
+                  />
+                  <View style={[styles.priceBadge, { backgroundColor: CATEGORY_CONFIG[offer.category].color }]}>
+                    <Text style={styles.priceBadgeText}>{offer.discounted_price}₺</Text>
+                  </View>
+                </View>
+              ) : (
+                <View
+                  style={[
+                    styles.marker,
+                    { backgroundColor: CATEGORY_CONFIG[offer.category].color },
+                  ]}
+                >
+                  <Text style={styles.markerText}>{offer.discounted_price}₺</Text>
+                </View>
+              )}
             </TouchableOpacity>
           </MapboxGL.MarkerView>
         ))}
@@ -147,6 +217,14 @@ export default function HomeScreen() {
             <Navigation size={20} color={COLORS.primary} />
           </TouchableOpacity>
         </View>
+
+        {/* Demo mode indicator */}
+        {useMockData && (
+          <View style={styles.demoModeContainer}>
+            <AlertCircle size={14} color={COLORS.warning} />
+            <Text style={styles.demoModeText}>Mode démo - Données fictives</Text>
+          </View>
+        )}
 
         {/* Categories */}
         <ScrollView
@@ -209,12 +287,23 @@ export default function HomeScreen() {
                   <X size={24} color={COLORS.text} />
                 </TouchableOpacity>
 
-                {selectedOffer.image_url && (
-                  <Image
-                    source={{ uri: selectedOffer.image_url }}
-                    style={styles.modalImage}
-                  />
-                )}
+                {/* Offer image with merchant logo overlay */}
+                <View style={styles.imageContainer}>
+                  {selectedOffer.image_url && (
+                    <Image
+                      source={{ uri: selectedOffer.image_url }}
+                      style={styles.modalImage}
+                    />
+                  )}
+                  {selectedOffer.store_logo && (
+                    <View style={styles.merchantLogoContainer}>
+                      <Image
+                        source={{ uri: selectedOffer.store_logo }}
+                        style={styles.merchantLogo}
+                      />
+                    </View>
+                  )}
+                </View>
 
                 <View style={styles.modalBody}>
                   <View style={styles.categoryBadge}>
@@ -229,10 +318,24 @@ export default function HomeScreen() {
                     {selectedOffer.description}
                   </Text>
 
+                  {/* Distance indicator if available */}
+                  {selectedOffer.distance_m && (
+                    <View style={styles.distanceBadge}>
+                      <MapPin size={14} color={COLORS.primary} />
+                      <Text style={styles.distanceText}>
+                        {selectedOffer.distance_m < 1000
+                          ? `${selectedOffer.distance_m}m`
+                          : `${(selectedOffer.distance_m / 1000).toFixed(1)}km`}
+                      </Text>
+                    </View>
+                  )}
+
                   <View style={styles.modalInfo}>
                     <View style={styles.infoRow}>
                       <MapPin size={16} color={COLORS.textLight} />
-                      <Text style={styles.infoText}>{selectedOffer.store_address}</Text>
+                      <Text style={styles.infoText}>
+                        {selectedOffer.store_address || 'Adresse à confirmer'}
+                      </Text>
                     </View>
                     <View style={styles.infoRow}>
                       <Clock size={16} color={COLORS.textLight} />
@@ -265,8 +368,20 @@ export default function HomeScreen() {
                     </View>
                   </View>
 
-                  <TouchableOpacity style={styles.reserveButton}>
-                    <Text style={styles.reserveButtonText}>Réserver</Text>
+                  <TouchableOpacity
+                    style={[styles.reserveButton, reserving && styles.reserveButtonDisabled]}
+                    onPress={handleReserve}
+                    disabled={reserving || selectedOffer.quantity_available === 0}
+                  >
+                    {reserving ? (
+                      <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.reserveButtonText}>
+                        {selectedOffer.quantity_available === 0
+                          ? 'Épuisé'
+                          : 'Réserver'}
+                      </Text>
+                    )}
                   </TouchableOpacity>
                 </View>
               </>
@@ -319,6 +434,23 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  demoModeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF8E1',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  demoModeText: {
+    fontSize: 12,
+    color: COLORS.warning,
+    fontWeight: '500',
+  },
   categoriesContainer: {
     paddingHorizontal: 16,
     paddingBottom: 12,
@@ -344,6 +476,9 @@ const styles = StyleSheet.create({
   categoryTextSelected: {
     color: COLORS.white,
   },
+  markerContainer: {
+    alignItems: 'center',
+  },
   marker: {
     paddingHorizontal: 10,
     paddingVertical: 6,
@@ -358,6 +493,35 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  logoMarker: {
+    alignItems: 'center',
+    position: 'relative',
+  },
+  logoImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    borderWidth: 2,
+    borderColor: COLORS.white,
+    backgroundColor: COLORS.white,
+  },
+  priceBadge: {
+    position: 'absolute',
+    bottom: -8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  priceBadgeText: {
+    color: COLORS.white,
+    fontWeight: 'bold',
+    fontSize: 11,
   },
   loadingContainer: {
     position: 'absolute',
@@ -390,14 +554,36 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  imageContainer: {
+    position: 'relative',
+  },
   modalImage: {
     width: '100%',
     height: 200,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
   },
+  merchantLogoContainer: {
+    position: 'absolute',
+    bottom: -30,
+    left: 20,
+    backgroundColor: COLORS.white,
+    borderRadius: 35,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  merchantLogo: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
   modalBody: {
     padding: 20,
+    paddingTop: 40,
   },
   categoryBadge: {
     backgroundColor: COLORS.primary,
@@ -428,7 +614,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textLight,
     lineHeight: 20,
-    marginBottom: 16,
+    marginBottom: 12,
+  },
+  distanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 4,
+  },
+  distanceText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   modalInfo: {
     backgroundColor: COLORS.background,
@@ -479,6 +681,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  reserveButtonDisabled: {
+    opacity: 0.7,
   },
   reserveButtonText: {
     color: COLORS.white,

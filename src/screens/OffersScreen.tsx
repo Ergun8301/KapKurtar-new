@@ -8,10 +8,15 @@ import {
   Image,
   RefreshControl,
   TextInput,
+  Alert,
+  Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Search, MapPin, Clock, Tag } from 'lucide-react-native';
+import { Search, MapPin, Clock, Tag, X, Package, AlertCircle } from 'lucide-react-native';
 import { useOffersStore } from '../store/offersStore';
+import { useAuthStore } from '../store/authStore';
+import { createReservation } from '../api/reservations';
 import type { Offer, OfferCategory } from '../types';
 
 // KapKurtar colors
@@ -23,6 +28,7 @@ const COLORS = {
   text: '#1A1A1A',
   textLight: '#666666',
   border: '#E0E0E0',
+  warning: '#FFA000',
 };
 
 // Category config
@@ -64,6 +70,12 @@ function OfferCard({ offer, onPress }: OfferCardProps) {
             {CATEGORY_CONFIG[offer.category].label}
           </Text>
         </View>
+        {/* Merchant logo overlay */}
+        {offer.store_logo && (
+          <View style={styles.storeLogo}>
+            <Image source={{ uri: offer.store_logo }} style={styles.storeLogoImage} />
+          </View>
+        )}
       </View>
 
       <View style={styles.cardContent}>
@@ -78,7 +90,14 @@ function OfferCard({ offer, onPress }: OfferCardProps) {
           <View style={styles.infoRow}>
             <MapPin size={14} color={COLORS.textLight} />
             <Text style={styles.infoText} numberOfLines={1}>
-              {offer.store_address}
+              {offer.store_address || 'Adresse à confirmer'}
+              {offer.distance_m && (
+                <Text style={styles.distanceText}>
+                  {' '}• {offer.distance_m < 1000
+                    ? `${offer.distance_m}m`
+                    : `${(offer.distance_m / 1000).toFixed(1)}km`}
+                </Text>
+              )}
             </Text>
           </View>
           <View style={styles.infoRow}>
@@ -106,13 +125,21 @@ function OfferCard({ offer, onPress }: OfferCardProps) {
 }
 
 export default function OffersScreen() {
-  const { offers, fetchOffers, isLoading } = useOffersStore();
+  const { offers, fetchOffers, isLoading, useMockData } = useOffersStore();
+  const { user, profile } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<OfferCategory | null>(null);
+  const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
+  const [reserving, setReserving] = useState(false);
 
   useEffect(() => {
-    fetchOffers();
-  }, []);
+    // Fetch offers with user ID if available for nearby offers
+    if (user?.id && profile?.has_location) {
+      fetchOffers(user.id);
+    } else {
+      fetchOffers();
+    }
+  }, [user?.id, profile?.has_location]);
 
   const filteredOffers = offers.filter((offer) => {
     const matchesSearch =
@@ -123,8 +150,44 @@ export default function OffersScreen() {
   });
 
   const handleOfferPress = (offer: Offer) => {
-    // Navigate to offer detail or show modal
-    console.log('Selected offer:', offer.id);
+    setSelectedOffer(offer);
+  };
+
+  const handleRefresh = () => {
+    if (user?.id && profile?.has_location) {
+      fetchOffers(user.id);
+    } else {
+      fetchOffers();
+    }
+  };
+
+  const handleReserve = async () => {
+    if (!selectedOffer) return;
+
+    if (!user) {
+      Alert.alert('Connexion requise', 'Veuillez vous connecter pour réserver une offre.');
+      return;
+    }
+
+    setReserving(true);
+    try {
+      const result = await createReservation(selectedOffer.id, selectedOffer.store_id, 1);
+
+      if (result.success) {
+        Alert.alert(
+          'Réservation confirmée !',
+          `Vous avez réservé "${selectedOffer.title}" chez ${selectedOffer.store_name}.\n\nRetrait: ${selectedOffer.pickup_start} - ${selectedOffer.pickup_end}`,
+          [{ text: 'OK', onPress: () => setSelectedOffer(null) }]
+        );
+        handleRefresh();
+      } else {
+        Alert.alert('Erreur', result.error || 'Impossible de créer la réservation');
+      }
+    } catch (error) {
+      Alert.alert('Erreur', 'Une erreur est survenue lors de la réservation');
+    } finally {
+      setReserving(false);
+    }
   };
 
   const categories: (OfferCategory | 'all')[] = [
@@ -146,6 +209,14 @@ export default function OffersScreen() {
           {filteredOffers.length > 1 ? 's' : ''}
         </Text>
       </View>
+
+      {/* Demo mode indicator */}
+      {useMockData && (
+        <View style={styles.demoModeContainer}>
+          <AlertCircle size={14} color={COLORS.warning} />
+          <Text style={styles.demoModeText}>Mode démo - Données fictives</Text>
+        </View>
+      )}
 
       {/* Search Bar */}
       <View style={styles.searchContainer}>
@@ -205,7 +276,7 @@ export default function OffersScreen() {
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
-            onRefresh={fetchOffers}
+            onRefresh={handleRefresh}
             tintColor={COLORS.primary}
             colors={[COLORS.primary]}
           />
@@ -220,6 +291,127 @@ export default function OffersScreen() {
           </View>
         }
       />
+
+      {/* Offer Detail Modal */}
+      <Modal
+        visible={!!selectedOffer}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedOffer(null)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {selectedOffer && (
+              <>
+                <TouchableOpacity
+                  style={styles.modalClose}
+                  onPress={() => setSelectedOffer(null)}
+                >
+                  <X size={24} color={COLORS.text} />
+                </TouchableOpacity>
+
+                {/* Offer image with merchant logo overlay */}
+                <View style={styles.imageContainer}>
+                  {selectedOffer.image_url && (
+                    <Image
+                      source={{ uri: selectedOffer.image_url }}
+                      style={styles.modalImage}
+                    />
+                  )}
+                  {selectedOffer.store_logo && (
+                    <View style={styles.merchantLogoContainer}>
+                      <Image
+                        source={{ uri: selectedOffer.store_logo }}
+                        style={styles.merchantLogo}
+                      />
+                    </View>
+                  )}
+                </View>
+
+                <View style={styles.modalBody}>
+                  <View style={[styles.modalCategoryBadge, { backgroundColor: CATEGORY_CONFIG[selectedOffer.category].color }]}>
+                    <Text style={styles.modalCategoryBadgeText}>
+                      {CATEGORY_CONFIG[selectedOffer.category].label}
+                    </Text>
+                  </View>
+
+                  <Text style={styles.modalTitle}>{selectedOffer.title}</Text>
+                  <Text style={styles.modalStore}>{selectedOffer.store_name}</Text>
+                  <Text style={styles.modalDescription}>
+                    {selectedOffer.description}
+                  </Text>
+
+                  {/* Distance indicator if available */}
+                  {selectedOffer.distance_m && (
+                    <View style={styles.modalDistanceBadge}>
+                      <MapPin size={14} color={COLORS.primary} />
+                      <Text style={styles.modalDistanceText}>
+                        {selectedOffer.distance_m < 1000
+                          ? `${selectedOffer.distance_m}m`
+                          : `${(selectedOffer.distance_m / 1000).toFixed(1)}km`}
+                      </Text>
+                    </View>
+                  )}
+
+                  <View style={styles.modalInfo}>
+                    <View style={styles.modalInfoRow}>
+                      <MapPin size={16} color={COLORS.textLight} />
+                      <Text style={styles.modalInfoText}>
+                        {selectedOffer.store_address || 'Adresse à confirmer'}
+                      </Text>
+                    </View>
+                    <View style={styles.modalInfoRow}>
+                      <Clock size={16} color={COLORS.textLight} />
+                      <Text style={styles.modalInfoText}>
+                        Retrait: {selectedOffer.pickup_start} - {selectedOffer.pickup_end}
+                      </Text>
+                    </View>
+                    <View style={styles.modalInfoRow}>
+                      <Package size={16} color={COLORS.textLight} />
+                      <Text style={styles.modalInfoText}>
+                        {selectedOffer.quantity_available} disponible
+                        {selectedOffer.quantity_available > 1 ? 's' : ''}
+                      </Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalPriceContainer}>
+                    <View>
+                      <Text style={styles.modalOriginalPrice}>
+                        {selectedOffer.original_price}₺
+                      </Text>
+                      <Text style={styles.modalDiscountedPrice}>
+                        {selectedOffer.discounted_price}₺
+                      </Text>
+                    </View>
+                    <View style={styles.modalDiscountBadge}>
+                      <Text style={styles.modalDiscountText}>
+                        -{selectedOffer.discount_percentage}%
+                      </Text>
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    style={[styles.reserveButton, reserving && styles.reserveButtonDisabled]}
+                    onPress={handleReserve}
+                    disabled={reserving || selectedOffer.quantity_available === 0}
+                  >
+                    {reserving ? (
+                      <ActivityIndicator color={COLORS.white} />
+                    ) : (
+                      <Text style={styles.reserveButtonText}>
+                        {selectedOffer.quantity_available === 0
+                          ? 'Épuisé'
+                          : 'Réserver'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -243,6 +435,23 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textLight,
     marginTop: 4,
+  },
+  demoModeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF8E1',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    borderRadius: 8,
+    gap: 6,
+  },
+  demoModeText: {
+    fontSize: 12,
+    color: COLORS.warning,
+    fontWeight: '500',
   },
   searchContainer: {
     flexDirection: 'row',
@@ -343,8 +552,27 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 12,
   },
+  storeLogo: {
+    position: 'absolute',
+    bottom: -20,
+    right: 12,
+    backgroundColor: COLORS.white,
+    borderRadius: 25,
+    padding: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  storeLogoImage: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+  },
   cardContent: {
     padding: 16,
+    paddingTop: 24,
   },
   cardTitle: {
     fontSize: 18,
@@ -371,6 +599,10 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textLight,
     flex: 1,
+  },
+  distanceText: {
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   cardFooter: {
     flexDirection: 'row',
@@ -421,5 +653,166 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: COLORS.textLight,
     marginTop: 4,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: COLORS.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '85%',
+  },
+  modalClose: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    zIndex: 10,
+    backgroundColor: COLORS.white,
+    padding: 8,
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  imageContainer: {
+    position: 'relative',
+  },
+  modalImage: {
+    width: '100%',
+    height: 200,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+  },
+  merchantLogoContainer: {
+    position: 'absolute',
+    bottom: -30,
+    left: 20,
+    backgroundColor: COLORS.white,
+    borderRadius: 35,
+    padding: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  merchantLogo: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+  },
+  modalBody: {
+    padding: 20,
+    paddingTop: 40,
+  },
+  modalCategoryBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+  },
+  modalCategoryBadgeText: {
+    color: COLORS.white,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: COLORS.text,
+    marginBottom: 4,
+  },
+  modalStore: {
+    fontSize: 16,
+    color: COLORS.secondary,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  modalDescription: {
+    fontSize: 14,
+    color: COLORS.textLight,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  modalDistanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    backgroundColor: '#E8F5E9',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+    gap: 4,
+  },
+  modalDistanceText: {
+    fontSize: 12,
+    color: COLORS.primary,
+    fontWeight: '600',
+  },
+  modalInfo: {
+    backgroundColor: COLORS.background,
+    padding: 16,
+    borderRadius: 12,
+    gap: 12,
+    marginBottom: 16,
+  },
+  modalInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modalInfoText: {
+    fontSize: 14,
+    color: COLORS.text,
+    flex: 1,
+  },
+  modalPriceContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+  modalOriginalPrice: {
+    fontSize: 16,
+    color: COLORS.textLight,
+    textDecorationLine: 'line-through',
+  },
+  modalDiscountedPrice: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: COLORS.primary,
+  },
+  modalDiscountBadge: {
+    backgroundColor: COLORS.secondary,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  modalDiscountText: {
+    color: COLORS.white,
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  reserveButton: {
+    backgroundColor: COLORS.primary,
+    paddingVertical: 16,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  reserveButtonDisabled: {
+    opacity: 0.7,
+  },
+  reserveButtonText: {
+    color: COLORS.white,
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });
